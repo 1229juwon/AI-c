@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Robots-Compliant Crawler</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+      form, section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+      input { padding: .6rem; width: min(100%, 560px); }
+      button { padding: .6rem 1rem; margin-right: .4rem; cursor: pointer; }
+      pre { background: #f6f6f6; padding: 1rem; overflow: auto; min-height: 8rem; }
+      .muted { color: #666; }
+    </style>
+  </head>
+  <body>
+    <h1>Robots-Compliant Crawler</h1>
+    <p class="muted">robots.txt와 crawl-delay를 준수하는 Selenium 크롤러</p>
+    <form id="crawl-form">
+      <label>
+        시작 URL
+        <input id="start-url" type="url" value="https://web-scraping.dev/products" required>
+      </label>
+      <label>
+        최대 페이지
+        <input id="max-pages" type="number" value="5" min="1" max="100" required>
+      </label>
+      <button type="submit">크롤링 시작</button>
+      <button id="stop" type="button" disabled>중지</button>
+      <button id="view-results" type="button" disabled>저장 결과 보기</button>
+    </form>
+    <section>
+      <h2>상태</h2>
+      <pre id="status">작업이 없습니다.</pre>
+    </section>
+    <section>
+      <h2>이벤트 로그</h2>
+      <pre id="events">-</pre>
+    </section>
+    <section>
+      <h2>수집된 상품</h2>
+      <div id="products">아직 수집된 상품이 없습니다.</div>
+    </section>
+    <section>
+      <h2>저장된 TXT 결과</h2>
+      <pre id="saved-results">작업을 시작하면 저장된 결과가 표시됩니다.</pre>
+    </section>
+    <script>
+      let jobId;
+      let timer;
+      const status = document.querySelector("#status");
+      const events = document.querySelector("#events");
+      const savedResults = document.querySelector("#saved-results");
+      const products = document.querySelector("#products");
+      const stopButton = document.querySelector("#stop");
+      const viewResultsButton = document.querySelector("#view-results");
+
+      function renderProducts(collectedProducts) {
+        products.replaceChildren();
+        if (!collectedProducts.length) {
+          products.textContent = "아직 수집된 상품이 없습니다.";
+          return;
+        }
+        const table = document.createElement("table");
+        const header = table.createTHead().insertRow();
+        ["상품명", "가격", "설명"].forEach((label) => {
+          const cell = header.insertCell();
+          cell.textContent = label;
+        });
+        const body = table.createTBody();
+        collectedProducts.forEach((product) => {
+          const row = body.insertRow();
+          const nameCell = row.insertCell();
+          const link = document.createElement("a");
+          link.href = product.url;
+          link.target = "_blank";
+          link.rel = "noreferrer";
+          link.textContent = product.name;
+          nameCell.append(link);
+          row.insertCell().textContent = product.price;
+          row.insertCell().textContent = product.description;
+        });
+        products.append(table);
+      }
+
+      async function refresh() {
+        if (!jobId) return;
+        const response = await fetch(`/api/crawl-jobs/${jobId}`);
+        const job = await response.json();
+        status.textContent = JSON.stringify({
+          status: job.status,
+          completed: job.completed,
+          queued: job.queued,
+          max_pages: job.max_pages,
+          error_message: job.error_message
+        }, null, 2);
+        events.textContent = job.events.join("\n");
+        const collectedProducts = job.results.flatMap((result) => result.products || []);
+        renderProducts(collectedProducts);
+        viewResultsButton.disabled = false;
+        if (["completed", "failed", "stopped"].includes(job.status)) {
+          clearInterval(timer);
+          stopButton.disabled = true;
+        }
+      }
+
+      document.querySelector("#crawl-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const response = await fetch("/api/crawl-jobs", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            start_url: document.querySelector("#start-url").value,
+            max_pages: Number(document.querySelector("#max-pages").value)
+          })
+        });
+        const job = await response.json();
+        if (!response.ok) {
+          status.textContent = job.detail || "작업 생성에 실패했습니다.";
+          return;
+        }
+        jobId = job.id;
+        await fetch(`/api/crawl-jobs/${jobId}/start`, {method: "POST"});
+        stopButton.disabled = false;
+        viewResultsButton.disabled = false;
+        clearInterval(timer);
+        timer = setInterval(refresh, 1000);
+        await refresh();
+      });
+
+      stopButton.addEventListener("click", async () => {
+        if (jobId) await fetch(`/api/crawl-jobs/${jobId}/stop`, {method: "POST"});
+        await refresh();
+      });
+
+      viewResultsButton.addEventListener("click", async () => {
+        if (!jobId) return;
+        const response = await fetch(`/api/crawl-jobs/${jobId}/result.txt`);
+        savedResults.textContent = response.ok
+          ? await response.text()
+          : "아직 저장된 결과가 없습니다.";
+      });
+    </script>
+  </body>
+</html>
