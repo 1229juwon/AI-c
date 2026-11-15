@@ -5,140 +5,369 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Robots-Compliant Crawler</title>
     <style>
-      body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-      form, section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-      input { padding: .6rem; width: min(100%, 560px); }
-      button { padding: .6rem 1rem; margin-right: .4rem; cursor: pointer; }
-      pre { background: #f6f6f6; padding: 1rem; overflow: auto; min-height: 8rem; }
-      .muted { color: #666; }
+      :root {
+        color-scheme: light;
+        --accent: #2563eb;
+        --border: #dbe1ea;
+        --muted: #64748b;
+        --surface: #f8fafc;
+        --success: #15803d;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 2rem 1rem 4rem;
+        color: #172033;
+        background: #fff;
+      }
+      h1 { margin-bottom: .35rem; }
+      h2 { margin-top: 0; font-size: 1.15rem; }
+      form, section {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      form {
+        display: grid;
+        gap: 1rem;
+        background: var(--surface);
+      }
+      .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
+      label { display: grid; gap: .35rem; font-weight: 600; }
+      input[type="url"], input[type="number"] {
+        padding: .65rem;
+        border: 1px solid #b8c2d1;
+        border-radius: 6px;
+        font: inherit;
+      }
+      input[type="url"] { width: min(100%, 620px); }
+      input[type="number"] { width: 110px; }
+      .checkbox { display: flex; align-items: center; gap: .5rem; padding-bottom: .7rem; }
+      .checkbox input { width: 1.1rem; height: 1.1rem; }
+      button {
+        padding: .65rem 1rem;
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.secondary { background: #475569; }
+      button.danger { background: var(--danger); }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+      .muted { color: var(--muted); }
+      .status-header { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+      .status-badge {
+        padding: .25rem .65rem;
+        border-radius: 999px;
+        background: #e2e8f0;
+        font-size: .9rem;
+        font-weight: 700;
+      }
+      .status-badge.running { background: #dbeafe; color: #1d4ed8; }
+      .status-badge.completed { background: #dcfce7; color: var(--success); }
+      .status-badge.failed { background: #fee2e2; color: var(--danger); }
+      .progress { height: 10px; margin: .75rem 0 1rem; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+      .progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+      .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .75rem; }
+      .stat { padding: .7rem; border-radius: 7px; background: var(--surface); }
+      .stat strong { display: block; font-size: 1.25rem; }
+      pre {
+        margin: 0;
+        padding: 1rem;
+        overflow: auto;
+        max-height: 360px;
+        white-space: pre-wrap;
+        background: var(--surface);
+        border-radius: 6px;
+      }
+      .table-wrap { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: .65rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+      th { background: var(--surface); }
+      td a { color: #1d4ed8; }
+      .empty { color: var(--muted); padding: .5rem 0; }
+      .error { color: var(--danger); font-weight: 600; }
     </style>
   </head>
   <body>
     <h1>Robots-Compliant Crawler</h1>
     <p class="muted">robots.txt와 crawl-delay를 준수하는 Selenium 크롤러</p>
+
     <form id="crawl-form">
-      <label>
-        시작 URL
-        <input id="start-url" type="url" value="https://web-scraping.dev/products" required>
-      </label>
-      <label>
-        최대 페이지
-        <input id="max-pages" type="number" value="5" min="1" max="100" required>
-      </label>
-      <button type="submit">크롤링 시작</button>
-      <button id="stop" type="button" disabled>중지</button>
-      <button id="view-results" type="button" disabled>저장 결과 보기</button>
+      <div class="form-row">
+        <label>
+          시작 URL
+          <input id="start-url" type="url" value="https://web-scraping.dev/products" required>
+        </label>
+        <label>
+          최대 페이지
+          <input id="max-pages" type="number" value="5" min="1" max="100" required>
+        </label>
+        <label class="checkbox">
+          <input id="use-ai" type="checkbox">
+          AI 상품 추출 사용
+        </label>
+      </div>
+      <div class="actions">
+        <button id="start" type="submit">크롤링 시작</button>
+        <button id="stop" class="danger" type="button" disabled>중지</button>
+        <button id="view-results" class="secondary" type="button" disabled>저장 결과 새로고침</button>
+      </div>
     </form>
+
     <section>
-      <h2>상태</h2>
-      <pre id="status">작업이 없습니다.</pre>
+      <div class="status-header">
+        <h2>진행 상황</h2>
+        <span id="status-badge" class="status-badge">대기 중</span>
+      </div>
+      <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
+      <div class="stats">
+        <div class="stat"><span class="muted">완료 페이지</span><strong id="completed">0 / 0</strong></div>
+        <div class="stat"><span class="muted">대기 페이지</span><strong id="queued">0</strong></div>
+        <div class="stat"><span class="muted">상품 수</span><strong id="product-count">0</strong></div>
+        <div class="stat"><span class="muted">작업 ID</span><strong id="job-id">-</strong></div>
+      </div>
+      <p id="error-message" class="error"></p>
     </section>
+
+    <section id="ai-trace-section" hidden>
+      <h2>AI 호출 상세</h2>
+      <p class="muted">페이지를 선택하면 해당 페이지의 프롬프트와 모델 원문 응답을 확인할 수 있습니다.</p>
+      <label>
+        분석 페이지
+        <select id="ai-page-select"></select>
+      </label>
+      <h3>프롬프트</h3>
+      <pre id="ai-prompt">-</pre>
+      <h3>AI 원문 응답</h3>
+      <pre id="ai-response">-</pre>
+    </section>
+
+    <section>
+      <h2>페이지별 결과</h2>
+      <div id="page-results" class="empty">작업을 시작하면 페이지 결과가 표시됩니다.</div>
+    </section>
+
     <section>
       <h2>이벤트 로그</h2>
       <pre id="events">-</pre>
     </section>
+
     <section>
       <h2>수집된 상품</h2>
-      <div id="products">아직 수집된 상품이 없습니다.</div>
+      <div id="products" class="empty">아직 수집된 상품이 없습니다.</div>
     </section>
+
     <section>
       <h2>저장된 TXT 결과</h2>
       <pre id="saved-results">작업을 시작하면 저장된 결과가 표시됩니다.</pre>
     </section>
+
     <script>
-      let jobId;
-      let timer;
-      const status = document.querySelector("#status");
-      const events = document.querySelector("#events");
-      const savedResults = document.querySelector("#saved-results");
-      const products = document.querySelector("#products");
-      const stopButton = document.querySelector("#stop");
-      const viewResultsButton = document.querySelector("#view-results");
+      let jobId = null;
+      let timer = null;
+      const terminalStatuses = ["completed", "failed", "stopped"];
+      const $ = (selector) => document.querySelector(selector);
+      const statusBadge = $("#status-badge");
+      const startButton = $("#start");
+      const stopButton = $("#stop");
+      const viewResultsButton = $("#view-results");
+
+      function showError(message) {
+        $("#error-message").textContent = message || "";
+      }
+
+      async function readJson(response) {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.detail || `요청에 실패했습니다. (${response.status})`);
+        }
+        return body;
+      }
 
       function renderProducts(collectedProducts) {
-        products.replaceChildren();
+        const container = $("#products");
+        container.replaceChildren();
+        $("#product-count").textContent = collectedProducts.length;
         if (!collectedProducts.length) {
-          products.textContent = "아직 수집된 상품이 없습니다.";
+          container.className = "empty";
+          container.textContent = "아직 수집된 상품이 없습니다.";
           return;
         }
+        container.className = "table-wrap";
         const table = document.createElement("table");
         const header = table.createTHead().insertRow();
-        ["상품명", "가격", "설명"].forEach((label) => {
-          const cell = header.insertCell();
-          cell.textContent = label;
+        ["상품명", "가격", "설명", "상품 URL"].forEach((label) => {
+          header.insertCell().textContent = label;
         });
         const body = table.createTBody();
         collectedProducts.forEach((product) => {
           const row = body.insertRow();
           const nameCell = row.insertCell();
-          const link = document.createElement("a");
-          link.href = product.url;
-          link.target = "_blank";
-          link.rel = "noreferrer";
-          link.textContent = product.name;
-          nameCell.append(link);
-          row.insertCell().textContent = product.price;
-          row.insertCell().textContent = product.description;
+          if (product.url) {
+            const link = document.createElement("a");
+            link.href = product.url;
+            link.target = "_blank";
+            link.rel = "noreferrer";
+            link.textContent = product.name;
+            nameCell.append(link);
+          } else {
+            nameCell.textContent = product.name;
+          }
+          row.insertCell().textContent = product.price || "-";
+          row.insertCell().textContent = product.description || "-";
+          row.insertCell().textContent = product.url || "-";
         });
-        products.append(table);
+        container.append(table);
+      }
+
+      function renderPageResults(results) {
+        const container = $("#page-results");
+        container.replaceChildren();
+        if (!results.length) {
+          container.className = "empty";
+          container.textContent = "작업을 시작하면 페이지 결과가 표시됩니다.";
+          return;
+        }
+        container.className = "table-wrap";
+        const table = document.createElement("table");
+        const header = table.createTHead().insertRow();
+        ["URL", "상태", "제목", "상품", "소요 시간"].forEach((label) => {
+          header.insertCell().textContent = label;
+        });
+        const body = table.createTBody();
+        results.forEach((result) => {
+          const row = body.insertRow();
+          row.insertCell().textContent = result.url;
+          row.insertCell().textContent = result.status;
+          row.insertCell().textContent = result.title || result.error_message || "-";
+          row.insertCell().textContent = (result.products || []).length;
+          row.insertCell().textContent = `${result.duration_ms} ms`;
+        });
+        container.append(table);
+      }
+
+      function renderJob(job) {
+        const completed = Number(job.completed) || 0;
+        const maxPages = Number(job.max_pages) || 0;
+        const progress = maxPages ? Math.min(100, completed / maxPages * 100) : 0;
+        $("#completed").textContent = `${completed} / ${maxPages}`;
+        $("#queued").textContent = job.queued;
+        $("#job-id").textContent = job.id || "-";
+        $("#progress-bar").style.width = `${progress}%`;
+        statusBadge.textContent = job.status;
+        statusBadge.className = `status-badge ${job.status}`;
+        $("#events").textContent = (job.events || []).join("\n") || "-";
+        showError(job.error_message);
+        const collectedProducts = (job.results || []).flatMap((result) => result.products || []);
+        renderProducts(collectedProducts);
+        renderPageResults(job.results || []);
+        const aiResults = (job.results || [])
+          .map((result, index) => ({ result, index }))
+          .filter(({ result }) => result.ai_prompt || result.ai_response);
+        const aiTraceSection = $("#ai-trace-section");
+        if (aiResults.length) {
+          aiTraceSection.hidden = false;
+          const pageSelect = $("#ai-page-select");
+          const selectedIndex = Number(pageSelect.value);
+          pageSelect.replaceChildren();
+          aiResults.forEach(({ result, index }) => {
+            const option = document.createElement("option");
+            option.value = index;
+            option.textContent = `${index + 1}. ${result.url}`;
+            pageSelect.append(option);
+          });
+          const selectedResult = aiResults.find(({ index }) => index === selectedIndex)
+            || aiResults[aiResults.length - 1];
+          pageSelect.value = selectedResult.index;
+          $("#ai-prompt").textContent = selectedResult.result.ai_prompt
+            || "프롬프트가 없습니다.";
+          $("#ai-response").textContent = selectedResult.result.ai_response
+            || "응답이 없습니다.";
+        } else {
+          aiTraceSection.hidden = true;
+        }
+        viewResultsButton.disabled = false;
+        stopButton.disabled = !["created", "running"].includes(job.status);
+        startButton.disabled = ["created", "running", "stopping"].includes(job.status);
+        if (terminalStatuses.includes(job.status)) {
+          clearInterval(timer);
+          timer = null;
+        }
+
+        $("#ai-page-select").addEventListener("change", () => {
+          if (!jobId) return;
+          refresh();
+        });
       }
 
       async function refresh() {
         if (!jobId) return;
-        const response = await fetch(`/api/crawl-jobs/${jobId}`);
-        const job = await response.json();
-        status.textContent = JSON.stringify({
-          status: job.status,
-          completed: job.completed,
-          queued: job.queued,
-          max_pages: job.max_pages,
-          error_message: job.error_message
-        }, null, 2);
-        events.textContent = job.events.join("\n");
-        const collectedProducts = job.results.flatMap((result) => result.products || []);
-        renderProducts(collectedProducts);
-        viewResultsButton.disabled = false;
-        if (["completed", "failed", "stopped"].includes(job.status)) {
+        try {
+          const job = await readJson(await fetch(`/api/crawl-jobs/${jobId}`));
+          renderJob(job);
+        } catch (error) {
           clearInterval(timer);
-          stopButton.disabled = true;
+          timer = null;
+          showError(error.message);
         }
       }
 
-      document.querySelector("#crawl-form").addEventListener("submit", async (event) => {
+      $("#crawl-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const response = await fetch("/api/crawl-jobs", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({
-            start_url: document.querySelector("#start-url").value,
-            max_pages: Number(document.querySelector("#max-pages").value)
-          })
-        });
-        const job = await response.json();
-        if (!response.ok) {
-          status.textContent = job.detail || "작업 생성에 실패했습니다.";
-          return;
-        }
-        jobId = job.id;
-        await fetch(`/api/crawl-jobs/${jobId}/start`, {method: "POST"});
-        stopButton.disabled = false;
-        viewResultsButton.disabled = false;
         clearInterval(timer);
-        timer = setInterval(refresh, 1000);
-        await refresh();
+        timer = null;
+        startButton.disabled = true;
+        stopButton.disabled = true;
+        viewResultsButton.disabled = true;
+        showError("");
+        try {
+          const job = await readJson(await fetch("/api/crawl-jobs", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              start_url: $("#start-url").value,
+              max_pages: Number($("#max-pages").value),
+              use_ai: $("#use-ai").checked
+            })
+          }));
+          jobId = job.id;
+          await readJson(await fetch(`/api/crawl-jobs/${jobId}/start`, {method: "POST"}));
+          await refresh();
+          timer = setInterval(refresh, 1000);
+        } catch (error) {
+          startButton.disabled = false;
+          showError(error.message);
+        }
       });
 
       stopButton.addEventListener("click", async () => {
-        if (jobId) await fetch(`/api/crawl-jobs/${jobId}/stop`, {method: "POST"});
-        await refresh();
+        if (!jobId) return;
+        stopButton.disabled = true;
+        try {
+          const job = await readJson(await fetch(`/api/crawl-jobs/${jobId}/stop`, {method: "POST"}));
+          renderJob(job);
+        } catch (error) {
+          showError(error.message);
+        }
       });
 
       viewResultsButton.addEventListener("click", async () => {
         if (!jobId) return;
-        const response = await fetch(`/api/crawl-jobs/${jobId}/result.txt`);
-        savedResults.textContent = response.ok
-          ? await response.text()
-          : "아직 저장된 결과가 없습니다.";
+        try {
+          const response = await fetch(`/api/crawl-jobs/${jobId}/result.txt`);
+          if (!response.ok) throw new Error("아직 저장된 결과가 없습니다.");
+          $("#saved-results").textContent = await response.text();
+        } catch (error) {
+          $("#saved-results").textContent = error.message;
+        }
       });
     </script>
   </body>

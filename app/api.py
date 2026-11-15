@@ -13,18 +13,31 @@ manager = CrawlJobManager(
     page_timeout_seconds=settings.crawler_page_timeout_seconds,
     headless=settings.selenium_headless,
     results_dir=settings.results_dir,
+    ai_api_url=settings.ai_api_url,
+    ai_api_key=settings.ai_api_key,
+    ai_jwt_token=settings.ai_jwt_token,
+    ai_model_id=settings.ai_model_id,
+    ai_max_output_tokens=settings.ai_max_output_tokens,
+    ai_timeout_seconds=settings.ai_timeout_seconds,
 )
 
 
 class CreateJobRequest(BaseModel):
     start_url: str = "https://web-scraping.dev/products"
     max_pages: int = Field(default=10, ge=1, le=100)
+    use_ai: bool = False
 
 
 @router.post("", status_code=201)
 def create_job(request: CreateJobRequest) -> dict[str, object]:
     try:
-        job = manager.create_job(request.start_url, request.max_pages)
+        if request.use_ai:
+            crawler_factory = manager.make_ai_crawler_factory()
+        else:
+            crawler_factory = None
+        job = manager.create_job_with_factory(
+            request.start_url, request.max_pages, crawler_factory
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return manager.snapshot(job.id)

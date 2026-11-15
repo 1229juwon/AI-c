@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import deque
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -8,8 +9,12 @@ from threading import Event, Lock
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from app.crawler.ai_client import AiClient, AiConfig
+from app.crawler.ai_crawler import AiCrawler
 from app.crawler.engine import PageResult, SeleniumCrawler, create_chrome_driver
 from app.crawler.policy import RobotsPolicy, RobotsPolicyError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,12 +36,18 @@ class CrawlJobManager:
         self,
         *,
         policy_loader: Callable[..., RobotsPolicy] = RobotsPolicy.load,
-        crawler_factory: Callable[[RobotsPolicy], SeleniumCrawler] | None = None,
+        crawler_factory: Callable[[RobotsPolicy], SeleniumCrawler | AiCrawler] | None = None,
         user_agent: str = "RobotsCompliantCrawler/0.1",
         default_delay_seconds: float = 2.0,
         page_timeout_seconds: int = 30,
         headless: bool = True,
         results_dir: str | Path = "artifacts",
+        ai_api_url: str = "",
+        ai_api_key: str = "",
+        ai_jwt_token: str = "",
+        ai_model_id: str = "",
+        ai_max_output_tokens: int = 16000,
+        ai_timeout_seconds: int = 60,
     ) -> None:
         from concurrent.futures import ThreadPoolExecutor
 
@@ -52,8 +63,21 @@ class CrawlJobManager:
         )
         self._results_dir = Path(results_dir)
         self._results_dir.mkdir(parents=True, exist_ok=True)
+        self._ai_config = AiConfig(
+            api_url=ai_api_url,
+            api_key=ai_api_key,
+            jwt_token=ai_jwt_token,
+            model_id=ai_model_id,
+            max_output_tokens=ai_max_output_tokens,
+            timeout_seconds=ai_timeout_seconds,
+        )
 
     def create_job(self, start_url: str, max_pages: int) -> CrawlJob:
+        return self.create_job_with_factory(start_url, max_pages, None)
+
+    def create_job_with_factory(
+        self, start_url: str, max_pages: int, crawler_factory
+    ) -> CrawlJob:
         self._validate_start_url(start_url)
         if max_pages < 1:
             raise ValueError("max_pages must be at least 1.")
@@ -61,6 +85,7 @@ class CrawlJobManager:
         job.events.append(f"Job created for {start_url}")
         with self._lock:
             self._jobs[job.id] = job
+        job._crawler_factory = crawler_factory  # type: ignore[attr-defined]
         return job
 
     def start_job(self, job_id: str) -> CrawlJob:
@@ -70,7 +95,8 @@ class CrawlJobManager:
                 raise ValueError(f"Job is already {job.status}.")
             job.status = "running"
             job.events.append("Crawl started.")
-        self._executor.submit(self._run_job, job)
+        crawler_factory = getattr(job, "_crawler_factory", None) or self._crawler_factory
+        self._executor.submit(self._run_job, job, crawler_factory)
         return job
 
     def stop_job(self, job_id: str) -> CrawlJob:
@@ -102,13 +128,13 @@ class CrawlJobManager:
             }
 
     def read_results(self, job_id: str) -> str:
-            job = self._get_job(job_id)
-            path = self._result_path(job)
-            if not path.exists():
-                raise FileNotFoundError(f"Result file does not exist for job: {job_id}")
-            return path.read_text(encoding="utf-8")
+        job = self._get_job(job_id)
+        path = self._result_path(job)
+        if not path.exists():
+            raise FileNotFoundError(f"Result file does not exist for job: {job_id}")
+        return path.read_text(encoding="utf-8")
 
-    def _run_job(self, job: CrawlJob) -> None:
+    def _run_job(self, job: CrawlJob, crawler_factory) -> None:
         try:
             parts = urlsplit(job.start_url)
             policy = self._policy_loader(
@@ -116,7 +142,7 @@ class CrawlJobManager:
                 user_agent=self._user_agent,
                 default_delay_seconds=self._default_delay_seconds,
             )
-            crawler = self._crawler_factory(policy)
+            crawler = crawler_factory(policy)
             pending = deque([job.start_url])
             seen = {job.start_url}
             while pending and job.completed < job.max_pages and not job.stop_event.is_set():
@@ -218,3 +244,29 @@ class CrawlJobManager:
             )
 
         return create_crawler
+
+    def make_ai_crawler_factory(
+        self,
+    ) -> Callable[[RobotsPolicy], AiCrawler]:
+        """Create an AiCrawler factory when AI config is available."""
+        if not self._ai_config.api_url or not (
+            self._ai_config.api_key or self._ai_config.jwt_token
+        ):
+            raise ValueError(
+                "AI crawler requires ai_api_url and an AI credential to be configured."
+            )
+
+        ai_client = AiClient(self._ai_config)
+
+        def create_ai_crawler(policy: RobotsPolicy) -> AiCrawler:
+            return AiCrawler(
+                policy=policy,
+                driver_factory=lambda: create_chrome_driver(
+                    headless=True,
+                    user_agent=self._user_agent,
+                ),
+                ai_client=ai_client,
+                page_timeout_seconds=30,
+            )
+
+        return create_ai_crawler

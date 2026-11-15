@@ -34,6 +34,10 @@ python -m uvicorn app.main:app --reload
 Selenium으로 열고, 페이지 제목·본문 미리보기·동일 호스트 링크를 반환합니다.
 `/products` 페이지에서는 상품명, 가격, 설명, 상품 URL, 이미지 URL도 추출합니다.
 
+`app/crawler/ai_crawler.py`는 Selenium으로 HTML을 가져온 뒤 AI 모델(Qwen 등)에
+분석을 요청해 제품 정보를 추출합니다. 기존 CSS 셀렉터 기반 추출과 달리 페이지
+구조가 바뀌어도 AI가 유연하게 대응합니다.
+
 `app/crawler/jobs.py`와 `/api/crawl-jobs`는 크롤링 작업 생성·시작·중지·상태
 조회를 제공합니다. <http://127.0.0.1:8000/>에서 간단한 진행률 UI를 사용할 수
 있습니다.
@@ -41,8 +45,14 @@ Selenium으로 열고, 페이지 제목·본문 미리보기·동일 호스트 �
 각 작업의 결과는 `artifacts/{job_id}.txt`에 UTF-8 텍스트로 누적 저장되며,
 UI의 **저장 결과 보기** 버튼 또는 아래 API로 확인할 수 있습니다.
 
+AI 모드를 사용하려면 `.env`에 `AI_API_URL`, `AI_API_KEY`, `AI_JWT_TOKEN`,
+`AI_MODEL_ID`를 설정하고, API 호출 시 `use_ai: true`를 전달합니다.
+`AI_JWT_TOKEN`은 `Authorization: Bearer`로, `AI_API_KEY`는 `X-API-Key`로
+전달됩니다. 비밀값은 `.env`에만 저장하고 저장소에 커밋하지 않습니다.
+
 ```text
-POST /api/crawl-jobs
+POST /api/crawl-jobs              # 기본 Selenium 방식
+POST /api/crawl-jobs              # {"start_url": "...", "max_pages": 5, "use_ai": true}
 POST /api/crawl-jobs/{job_id}/start
 POST /api/crawl-jobs/{job_id}/stop
 GET  /api/crawl-jobs/{job_id}

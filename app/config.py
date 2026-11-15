@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     selenium_headless: bool = True
     database_url: str = "sqlite:///./data/crawler.db"
     results_dir: str = "artifacts"
+    ai_api_url: str = ""
+    ai_api_key: str = ""
+    ai_jwt_token: str = ""
+    ai_model_id: str = ""
+    ai_max_output_tokens: int = 16000
+    ai_timeout_seconds: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

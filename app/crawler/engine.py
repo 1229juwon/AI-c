@@ -45,6 +45,8 @@ class PageResult:
     duration_ms: int
     products: tuple[Product, ...] = ()
     error_message: str | None = None
+    ai_prompt: str = ""
+    ai_response: str = ""
 
 
 class SeleniumCrawler:
